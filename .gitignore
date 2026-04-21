@@ -24,5 +24,8 @@ env/
 .idea/
 .vscode/
 
+# Token bor — gitga kirmasin
+setup.bat
+
 # Dataset gitda saqlanadi (141MB, 500+500 wav)
 # download_data.py bilan qo'shimcha data ham yuklanadi
