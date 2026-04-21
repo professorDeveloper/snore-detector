@@ -45,8 +45,18 @@ echo.
 :: -------------------------------------------------------
 echo [QADAM 3/5]  Kutubxonalar o'rnatilmoqda...
 echo -------------------------------------------------------
-echo  (bu bir necha daqiqa olishi mumkin)
 echo.
+echo  [3a] PyTorch CUDA 12.1 (RTX 4060 uchun) o'rnatilmoqda...
+echo       ~1-2 GB yuklanadi, bir necha daqiqa ketadi
+echo.
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo  [XATO] PyTorch CUDA o'rnatilmadi!
+    pause & exit /b 1
+)
+echo.
+echo  [3b] Qolgan kutubxonalar o'rnatilmoqda...
 pip install -r requirements.txt
 if %ERRORLEVEL% neq 0 (
     echo.
@@ -54,7 +64,10 @@ if %ERRORLEVEL% neq 0 (
     pause & exit /b 1
 )
 echo.
-echo  [OK] Barcha kutubxonalar o'rnatildi
+echo  GPU tekshirilmoqda:
+python -c "import torch; g=torch.cuda.is_available(); print('  GPU:', torch.cuda.get_device_name(0) if g else 'TOPILMADI'); print('  CUDA:', torch.version.cuda if g else 'YOQ')"
+echo.
+echo  [OK] Kutubxonalar tayyor
 echo.
 
 :: -------------------------------------------------------
