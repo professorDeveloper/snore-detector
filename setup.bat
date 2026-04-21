@@ -46,17 +46,21 @@ echo.
 echo [QADAM 3/5]  Kutubxonalar o'rnatilmoqda...
 echo -------------------------------------------------------
 echo.
-echo  [3a] PyTorch CUDA 12.1 (RTX 4060 uchun) o'rnatilmoqda...
-echo       ~1-2 GB yuklanadi, bir necha daqiqa ketadi
+echo  [3a] Eski PyTorch o'chirilmoqda...
 echo.
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip uninstall torch torchvision torchaudio -y
+echo.
+echo  [3b] PyTorch CUDA 12.4 (RTX 4060) yuklanmoqda...
+echo       ~2 GB - bir necha daqiqa ketadi
+echo.
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124 --force-reinstall
 if %ERRORLEVEL% neq 0 (
     echo.
     echo  [XATO] PyTorch CUDA o'rnatilmadi!
     pause & exit /b 1
 )
 echo.
-echo  [3b] Qolgan kutubxonalar o'rnatilmoqda...
+echo  [3c] Qolgan kutubxonalar o'rnatilmoqda...
 pip install -r requirements.txt
 if %ERRORLEVEL% neq 0 (
     echo.
