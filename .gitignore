@@ -1,0 +1,29 @@
+# Model fayllar (katta, gitga kerak emas)
+*.pt
+*.ptl
+*.onnx
+results.png
+
+# Vaqtinchalik fayllar
+_tmp_download/
+*.tmp.*
+*~
+*.swo
+*.swp
+__pycache__/
+*.pyc
+.DS_Store
+
+# Virtual environment
+.venv/
+.venv1/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# Dataset — gitga push QILMASLIK (katta fayl)
+# Windowsda  python download_data.py  ishlatib yuklab oling
+dataset/
