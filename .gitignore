@@ -24,6 +24,5 @@ env/
 .idea/
 .vscode/
 
-# Dataset — gitga push QILMASLIK (katta fayl)
-# Windowsda  python download_data.py  ishlatib yuklab oling
-dataset/
+# Dataset gitda saqlanadi (141MB, 500+500 wav)
+# download_data.py bilan qo'shimcha data ham yuklanadi
