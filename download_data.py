@@ -2,26 +2,17 @@
 """
 Dataset tayyorlash — Kaggle'dan audio yuklab olish
 =======================================================
-Nima qiladi:
-  dataset/0/  ->  nutq (speech) + boshqa ovozlar  [NON-SNORING]
-  dataset/1/  ->  xurrak ovozlar                   [SNORING]
+dataset/0  ->  NON-SNORING: nutq, shovqin, turli ovozlar
+dataset/1  ->  SNORING: xurrak ovozlar
 
-Ishlatish:
-  1. Kaggle API token olish:  https://www.kaggle.com/settings -> API -> Create Token
-  2. Tokenni qo'yish:  ~/.kaggle/kaggle.json  (Mac/Linux)
-                       C:\\Users\\<name>\\.kaggle\\kaggle.json  (Windows)
-  3. pip install kaggle librosa soundfile tqdm
-  4. python download_data.py
-
-Yuklanadigan datasetlar (Kaggle):
-  - google-speech-commands  ->  dataset/0  (nutq, so'zlar)
-  - snoring-detection       ->  dataset/0 va dataset/1  (to'ldirish uchun)
+Maqsad: Model faqat xurrakni tanishi kerak.
+        Nutq (o'zbek, rus, ingliz), yo'tal, musiqa,
+        shovqin — bularni XURRAK EMAS deb bilishi kerak.
 """
 
 import os
 import sys
 import shutil
-import zipfile
 import random
 import subprocess
 from pathlib import Path
@@ -34,252 +25,250 @@ from tqdm import tqdm
 # ------------------------------------------------------------------
 # SOZLAMALAR
 # ------------------------------------------------------------------
-OUT_0        = Path("dataset/0")   # Non-snoring
-OUT_1        = Path("dataset/1")   # Snoring
-SAMPLE_RATE  = 16000
-DURATION     = 1.0
-WIN_LEN      = int(SAMPLE_RATE * DURATION)
+OUT_0       = Path("dataset/0")
+OUT_1       = Path("dataset/1")
+SR          = 16000
+WIN_LEN     = SR          # 1 soniya
+TARGET_0    = 2000
+TARGET_1    = 2000
+TMP         = Path("_tmp_download")
 
-TARGET_0     = 2000   # dataset/0 ga nechta fayl kerak
-TARGET_1     = 2000   # dataset/1 ga nechta fayl kerak
-
-TMP_DIR      = Path("_tmp_download")
-
-# Kaggle dataset sluglari (bir nechta variant — biri ishlamasa keyingisi sinab ko'riladi)
-DATASETS_SNORING = [
+# ------------------------------------------------------------------
+# KAGGLE DATASET SLUGLARI
+#
+# Har bir kategoriya uchun bir nechta variant —
+# biri ishlamasa keyingisi avtomatik sinab ko'riladi
+# ------------------------------------------------------------------
+SNORING_SLUGS = [
     "emilianogalimberti/snoring-dataset",
     "tareqtaha/snoring-dataset",
-    "datasets/snoring-detection",
+    "deependraverma/snoring-not-snoring",
 ]
-DATASETS_NONSPEECH = [
+
+SPEECH_SLUGS = [
+    "bryanpark/google-command-speech-dataset",
+    "google/speech-commands",
+    "hbaghdadi/speech-commands-dataset",
+]
+
+NOISE_SLUGS = [
     "mmoreaux/environmental-sound-classification",   # ESC-50
     "chrisfilo/urbansound8k",
     "soumendrakumar/urban-sound-classification",
+    "uwrfkaggler/ravdess-emotional-speech-audio",
 ]
 
 
 # ------------------------------------------------------------------
-# YORDAMCHI FUNKSIYALAR
+# YORDAMCHI: KAGGLE YUKLAB OLISH
 # ------------------------------------------------------------------
 
-def check_kaggle():
-    """kaggle CLI mavjudligini tekshiradi."""
+def check_kaggle() -> bool:
     try:
-        result = subprocess.run(["kaggle", "--version"],
-                                capture_output=True, text=True)
-        print(f"  [OK] Kaggle CLI: {result.stdout.strip()}")
+        r = subprocess.run(["kaggle", "--version"], capture_output=True, text=True)
+        print(f"  [OK] Kaggle CLI: {r.stdout.strip()}")
         return True
     except FileNotFoundError:
-        print("\n  [!!] kaggle topilmadi. O'rnatish:")
-        print("       pip install kaggle")
-        print("       Keyin:  https://www.kaggle.com/settings -> API -> Create New Token")
+        print("  [!!] kaggle topilmadi: pip install kaggle")
         return False
 
 
 def kaggle_download(slug: str, out_dir: Path) -> bool:
-    """Kaggle dataset yuklab oladi, zip ni ochadi."""
+    """
+    Dataset yuklaydi. Progress to'g'ridan-to'g'ri terminalda ko'rinadi.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\n  Yuklanmoqda: {slug}")
+    print(f"\n  >>> Yuklanmoqda: kaggle datasets download -d {slug}")
+    print(f"  >>> Papka: {out_dir}")
+    print()
+
+    # capture_output=False => progress terminaldа ko'rinadi
     result = subprocess.run(
         ["kaggle", "datasets", "download", "-d", slug,
          "-p", str(out_dir), "--unzip"],
-        capture_output=True, text=True
     )
+    print()
     if result.returncode != 0:
-        err = (result.stderr.strip() or result.stdout.strip())[:300]
-        print(f"  [!!] Xato ({slug}):")
-        print(f"       {err if err else 'noma`lum xato'}")
+        print(f"  [!!] Xato: {slug} — qaytdi {result.returncode}")
         return False
-    print(f"  [OK] Yuklandi -> {out_dir}")
+
+    files = list(out_dir.rglob("*"))
+    n = sum(1 for f in files if f.is_file())
+    print(f"  [OK] Yuklandi: {n} ta fayl -> {out_dir}")
     return True
 
 
-def kaggle_download_first(slugs: list, out_dir: Path) -> bool:
-    """Sluglar ro'yxatidan birinchi muvaffaqiyatli yuklanganini oladi."""
-    for slug in slugs:
+def try_slugs(slugs: list, out_dir: Path, label: str) -> bool:
+    """Ro'yxatdagi sluglarni birma-bir sinab ko'radi."""
+    print(f"\n{'='*55}")
+    print(f"  {label}")
+    print(f"{'='*55}")
+    for i, slug in enumerate(slugs, 1):
+        print(f"\n  [{i}/{len(slugs)}] Sinab ko'rilmoqda: {slug}")
         if kaggle_download(slug, out_dir):
             return True
-    print(f"  [!!] Hech qaysi slug ishlamadi: {slugs}")
+    print(f"\n  [!!] {label} — hech biri ishlamadi, o'tkazildi")
     return False
 
 
-def process_audio(src_path: str, dst_folder: Path,
-                  prefix: str, max_clips: int = None) -> int:
+# ------------------------------------------------------------------
+# YORDAMCHI: AUDIO PROCESSING
+# ------------------------------------------------------------------
+
+def process_audio(src: str, dst_folder: Path, prefix: str,
+                  max_clips: int = 3) -> int:
     """
-    Audio faylni 16kHz mono ga o'tkazadi, 1s parchalarga bo'ladi.
-    Qaytaradi: qo'shilgan kliplar soni.
+    Istalgan formatdagi audio faylni:
+      - 16kHz mono ga o'tkazadi
+      - 1 soniyalik kliplaarga bo'ladi
+      - dataset papkasiga saqlaydi
+    Qaytaradi: qo'shilgan kliplar soni
     """
     dst_folder.mkdir(parents=True, exist_ok=True)
     existing = len(list(dst_folder.glob("*.wav")))
-
     try:
-        y, _ = librosa.load(src_path, sr=SAMPLE_RATE, mono=True)
+        y, _ = librosa.load(src, sr=SR, mono=True)
     except Exception:
         return 0
 
-    # Ovoz bor-yo'qligini tekshirish (juda jim fayllarni o'tkazib yuborish)
     rms = np.sqrt(np.mean(y ** 2))
-    if rms < 1e-4:
+    if rms < 5e-5:          # juda jim — o'tkazib yuborish
         return 0
 
-    clips_added = 0
+    clips = 0
 
     if len(y) < WIN_LEN:
-        # Qisqa — pad qilib 1 klip
         y = np.pad(y, (0, WIN_LEN - len(y)), mode='reflect')
-        out_path = dst_folder / f"{prefix}_{existing + clips_added}.wav"
-        sf.write(str(out_path), y.astype(np.float32), SAMPLE_RATE)
-        clips_added += 1
+        sf.write(str(dst_folder / f"{prefix}_{existing}.wav"),
+                 y.astype(np.float32), SR)
+        clips = 1
     else:
-        # Uzun — 1s oynalarga bo'lish
-        step = WIN_LEN // 2  # 50% overlap
+        step = WIN_LEN // 2
         for start in range(0, len(y) - WIN_LEN + 1, step):
-            if max_clips and clips_added >= max_clips:
+            if clips >= max_clips:
                 break
             seg = y[start: start + WIN_LEN]
-            seg_rms = np.sqrt(np.mean(seg ** 2))
-            if seg_rms < 1e-4:
+            if np.sqrt(np.mean(seg ** 2)) < 5e-5:
                 continue
-            out_path = dst_folder / f"{prefix}_{existing + clips_added}.wav"
-            sf.write(str(out_path), seg.astype(np.float32), SAMPLE_RATE)
-            clips_added += 1
+            sf.write(str(dst_folder / f"{prefix}_{existing + clips}.wav"),
+                     seg.astype(np.float32), SR)
+            clips += 1
 
-    return clips_added
+    return clips
 
 
 def count(folder: Path) -> int:
     return len(list(folder.glob("*.wav")))
 
 
-# ------------------------------------------------------------------
-# DATASET 1: SPEECH COMMANDS (dataset/0 uchun nutq)
-# ------------------------------------------------------------------
+def copy_audio_to(src_dir: Path, dst_folder: Path,
+                  prefix: str, needed: int) -> int:
+    """src_dir dagi barcha audio fayllarni dst_folder ga ko'chiradi."""
+    if needed <= 0:
+        return 0
 
-def load_nonspeech_sounds():
-    """ESC-50 / UrbanSound — turli ovozlar (non-snoring uchun)."""
-    print("\n" + "=" * 55)
-    print("  NON-SNORING OVOZLAR yuklanmoqda...")
-    print("=" * 55)
-
-    tmp = TMP_DIR / "nonspeech"
-    ok  = kaggle_download_first(DATASETS_NONSPEECH, tmp)
-    if not ok:
-        print("  [!!] Non-snoring data yuklanmadi, o'tkaziladi")
-        return
-
-    all_audio = (list(tmp.rglob("*.wav")) +
-                 list(tmp.rglob("*.ogg")) +
-                 list(tmp.rglob("*.mp3")))
-    random.shuffle(all_audio)
-    print(f"  Topilgan: {len(all_audio)} ta fayl")
-
-    needed = max(0, TARGET_0 - count(OUT_0))
-    print(f"  Kerak: {needed} ta klip dataset/0 ga")
+    all_files = (list(src_dir.rglob("*.wav")) +
+                 list(src_dir.rglob("*.mp3")) +
+                 list(src_dir.rglob("*.ogg")) +
+                 list(src_dir.rglob("*.flac")))
+    random.shuffle(all_files)
+    print(f"  Topilgan: {len(all_files)} ta audio fayl")
+    print(f"  Kerak:    {needed} ta klip")
 
     added = 0
-    pbar  = tqdm(all_audio, desc="  Ovoz->dataset/0")
+    pbar  = tqdm(all_files, desc=f"  -> {dst_folder.name}", unit="fayl",
+                 bar_format="  {l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
     for f in pbar:
         if added >= needed:
             break
-        n = process_audio(str(f), OUT_0, "env", max_clips=2)
+        n = process_audio(str(f), dst_folder, prefix)
         added += n
-        pbar.set_postfix(added=added)
+        pbar.set_postfix({"qo'shildi": added, "kerak": needed})
 
-    print(f"  [OK] +{added} ta klip -> dataset/0 (jami: {count(OUT_0)})")
+    return added
 
 
 # ------------------------------------------------------------------
-# DATASET 2: SNORING DATASET (ikki klass uchun)
+# 1. SNORING DATASET
 # ------------------------------------------------------------------
 
-def load_snoring_dataset():
-    """Snoring dataset -> dataset/0 va dataset/1 ga qo'shadi."""
-    print("\n" + "=" * 55)
-    print("  SNORING DATASET yuklanmoqda...")
-    print("=" * 55)
-
-    tmp = TMP_DIR / "snoring"
-    ok  = kaggle_download_first(DATASETS_SNORING, tmp)
+def load_snoring():
+    tmp = TMP / "snoring"
+    ok  = try_slugs(SNORING_SLUGS, tmp, "SNORING DATASET (xurrak + xurrak emas)")
     if not ok:
-        print("  [!!] Snoring dataset yuklanmadi, o'tkaziladi")
         return
 
-    # Papka strukturasini topish
-    # Ko'p datasetlarda: 0/ va 1/ yoki Snoring/ va NotSnoring/ bo'ladi
-    for subfolder in tmp.rglob("*"):
-        if not subfolder.is_dir():
+    # Papka strukturasini avtomatik aniqlash
+    found_any = False
+    for sub in sorted(tmp.rglob("*")):
+        if not sub.is_dir():
             continue
+        name = sub.name.lower()
 
-        name = subfolder.name.lower()
-        wavs = list(subfolder.glob("*.wav"))
-        if not wavs:
-            wavs = list(subfolder.glob("*.ogg")) + list(subfolder.glob("*.mp3"))
-        if not wavs:
-            continue
-
-        # Qaysi klass ekanini aniqlash
-        if name in ("1", "snoring", "snore", "xurrak"):
-            target = OUT_1
-            prefix = "snore_kaggle"
+        if name in ("1", "snoring", "snore", "snores"):
+            target, pfx = OUT_1, "snore_kg"
         elif name in ("0", "notsnoring", "not_snoring", "nosnore",
-                      "non_snoring", "nonsnoring", "normal", "noise"):
-            target = OUT_0
-            prefix = "nonsnore_kaggle"
+                      "non_snoring", "nonsnoring", "normal", "noise",
+                      "no_snore"):
+            target, pfx = OUT_0, "nonsnore_kg"
         else:
             continue
 
-        needed = max(0, TARGET_1 - count(target)) if target == OUT_1 \
-            else max(0, TARGET_0 - count(target))
-        if needed == 0:
+        need = max(0, (TARGET_1 if target == OUT_1 else TARGET_0) - count(target))
+        if need == 0:
+            print(f"  {target} to'ldi, {name} o'tkazildi")
             continue
 
-        random.shuffle(wavs)
-        added = 0
-        for wav in tqdm(wavs, desc=f"  {subfolder.name} -> {target.name}"):
-            if added >= needed:
-                break
-            n = process_audio(str(wav), target, prefix, max_clips=2)
-            added += n
+        print(f"\n  {name}/ -> {target}/")
+        n = copy_audio_to(sub, target, pfx, need)
+        print(f"  [OK] +{n} ta -> {target} (jami: {count(target)})")
+        found_any = True
 
-        print(f"  [OK] {subfolder.name}: +{added} -> {target} (jami: {count(target)})")
+    if not found_any:
+        print("  [!!] Snoring dataset ichida 0/ yoki 1/ papkalar topilmadi")
+        print("  Barcha fayllar ko'rsatilmoqda:")
+        for f in list(tmp.rglob("*"))[:20]:
+            print(f"    {f}")
 
 
 # ------------------------------------------------------------------
-# DATASET 3: URBANSOUND (qo'shimcha non-snoring)
+# 2. SPEECH DATA (nutq — xurrak emas deb o'rganishi uchun)
 # ------------------------------------------------------------------
 
-def load_urbansound():
-    """Qo'shimcha non-snoring (agar hali ham kam bo'lsa)."""
+def load_speech():
     if count(OUT_0) >= TARGET_0:
-        print("\n  dataset/0 to'ldi, qo'shimcha kerak emas.")
+        print("\n  dataset/0 to'ldi, speech kerak emas.")
         return
 
-    print("\n" + "=" * 55)
-    print("  QO'SHIMCHA NON-SNORING yuklanmoqda...")
-    print("=" * 55)
-
-    tmp = TMP_DIR / "urban2"
-    slugs = [s for s in DATASETS_NONSPEECH if (TMP_DIR / "nonspeech").exists() is False or s != DATASETS_NONSPEECH[0]]
-    ok  = kaggle_download_first(slugs, tmp)
+    tmp = TMP / "speech"
+    ok  = try_slugs(SPEECH_SLUGS, tmp,
+                    "SPEECH DATA (nutq — non-snoring o'rgatish uchun)")
     if not ok:
-        print("  [!!] Qo'shimcha data yuklanmadi, o'tkaziladi")
         return
 
-    all_wavs = list(tmp.rglob("*.wav"))
-    random.shuffle(all_wavs)
-    print(f"  Topilgan: {len(all_wavs)} ta fayl")
+    need  = max(0, TARGET_0 - count(OUT_0))
+    added = copy_audio_to(tmp, OUT_0, "speech", need)
+    print(f"  [OK] Speech: +{added} -> dataset/0 (jami: {count(OUT_0)})")
 
-    needed = max(0, TARGET_0 - count(OUT_0))
-    added  = 0
-    pbar   = tqdm(all_wavs, desc="  Urban->dataset/0")
-    for wav in pbar:
-        if added >= needed:
-            break
-        n = process_audio(str(wav), OUT_0, "urban", max_clips=1)
-        added += n
-        pbar.set_postfix(added=added)
 
-    print(f"  [OK] Urban: +{added} -> dataset/0 (jami: {count(OUT_0)})")
+# ------------------------------------------------------------------
+# 3. ENVIRONMENTAL NOISE (shovqin — xurrak emas deb o'rganishi uchun)
+# ------------------------------------------------------------------
+
+def load_noise():
+    if count(OUT_0) >= TARGET_0:
+        print("\n  dataset/0 to'ldi, noise kerak emas.")
+        return
+
+    tmp = TMP / "noise"
+    ok  = try_slugs(NOISE_SLUGS, tmp,
+                    "NOISE DATA (shovqin — non-snoring o'rgatish uchun)")
+    if not ok:
+        return
+
+    need  = max(0, TARGET_0 - count(OUT_0))
+    added = copy_audio_to(tmp, OUT_0, "noise", need)
+    print(f"  [OK] Noise: +{added} -> dataset/0 (jami: {count(OUT_0)})")
 
 
 # ------------------------------------------------------------------
@@ -289,56 +278,69 @@ def load_urbansound():
 def main():
     random.seed(42)
 
-    print("\n" + "=" * 55)
-    print("  DATASET TAYYORLOVCHI SKRIPT")
-    print("  Mac va Windows da ishlaydi")
+    print()
     print("=" * 55)
+    print("  SNORE DETECTOR — DATASET YUKLOVCHI")
+    print("=" * 55)
+    print()
+    print("  Maqsad: Model faqat XURRAKNI tanishi uchun")
+    print("  dataset/0 ga: nutq, shovqin, boshqa ovozlar")
+    print("  dataset/1 ga: faqat xurrak ovozlari")
+    print()
+    print(f"  Mavjud holat:")
+    print(f"    dataset/0 (non-snoring): {count(OUT_0):>5} ta")
+    print(f"    dataset/1 (snoring):     {count(OUT_1):>5} ta")
 
-    # Papkalarni yaratish
     OUT_0.mkdir(parents=True, exist_ok=True)
     OUT_1.mkdir(parents=True, exist_ok=True)
-    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    TMP.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n  Mavjud holat:")
-    print(f"    dataset/0 (non-snoring): {count(OUT_0)} ta")
-    print(f"    dataset/1 (snoring):     {count(OUT_1)} ta")
-
-    # kaggle tekshirish
     if not check_kaggle():
         sys.exit(1)
 
-    # 1. Snoring dataset (ikkala klass uchun)
-    load_snoring_dataset()
+    # 1. Snoring dataset
+    print()
+    load_snoring()
 
-    # 2. Non-snoring ovozlar (ESC-50 / UrbanSound)
-    if count(OUT_0) < TARGET_0:
-        load_nonspeech_sounds()
+    # 2. Speech (nutq)
+    print()
+    load_speech()
 
-    # 3. Hali ham kam bo'lsa — yana boshqa variant
-    if count(OUT_0) < TARGET_0:
-        load_urbansound()
+    # 3. Noise (shovqin)
+    print()
+    load_noise()
 
-    # Tmp papkani o'chirish
-    if TMP_DIR.exists():
-        shutil.rmtree(TMP_DIR)
-        print("\n  Vaqtinchalik fayllar o'chirildi.")
+    # Tozalash
+    if TMP.exists():
+        shutil.rmtree(TMP)
 
     # Yakuniy hisobot
     c0 = count(OUT_0)
     c1 = count(OUT_1)
-    print("\n" + "=" * 55)
-    print("  TAYYOR!")
-    print(f"  dataset/0 (non-snoring): {c0} ta")
-    print(f"  dataset/1 (snoring):     {c1} ta")
-    print(f"  Jami:                    {c0 + c1} ta")
+    print()
+    print("=" * 55)
+    print("  YAKUNIY HOLAT")
+    print("=" * 55)
+    print(f"  dataset/0 (non-snoring): {c0:>5} ta")
+    print(f"  dataset/1 (snoring):     {c1:>5} ta")
+    print(f"  Jami:                    {c0+c1:>5} ta")
+    print()
 
-    if c0 < 500 or c1 < 500:
-        print("\n  [!!] Ogohlantirish: bir klassda 500 dan kam fayl.")
-        print("       Ko'proq data qo'shish tavsiya etiladi.")
+    if c0 < 800 or c1 < 800:
+        print("  [!!] OGOHLANTIRISH: Biror klassda 800 dan kam fayl!")
+        print("       Ko'proq data kerak — model yaxshi o'qimaydi.")
+    elif abs(c0 - c1) > min(c0, c1) * 0.3:
+        print("  [!!] OGOHLANTIRISH: Klasslar muvozanatsiz!")
+        print(f"       dataset/0: {c0}  vs  dataset/1: {c1}")
+        print("       Kamroq klassga data qo'shish tavsiya etiladi.")
     else:
-        print("\n  Endi o'qitish uchun:")
+        print("  [OK] Dataset muvozanatli va yetarli!")
+        print()
+        print("  Endi o'qitish:")
         print("    python train_and_export.py")
-    print("=" * 55 + "\n")
+
+    print("=" * 55)
+    print()
 
 
 if __name__ == "__main__":
