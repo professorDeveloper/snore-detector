@@ -40,22 +40,16 @@ TMP         = Path("_tmp_download")
 # biri ishlamasa keyingisi avtomatik sinab ko'riladi
 # ------------------------------------------------------------------
 SNORING_SLUGS = [
-    "emilianogalimberti/snoring-dataset",
-    "tareqtaha/snoring-dataset",
-    "deependraverma/snoring-not-snoring",
+    "tareqkhanemu/snoring",          # 1000 klip, 500+500, tasdiqlangan
 ]
 
 SPEECH_SLUGS = [
-    "bryanpark/google-command-speech-dataset",
-    "google/speech-commands",
-    "hbaghdadi/speech-commands-dataset",
+    "yashdogra/speech-commands",     # Google Speech Commands v0.02
 ]
 
 NOISE_SLUGS = [
-    "mmoreaux/environmental-sound-classification",   # ESC-50
-    "chrisfilo/urbansound8k",
-    "soumendrakumar/urban-sound-classification",
-    "uwrfkaggler/ravdess-emotional-speech-audio",
+    "mmoreaux/environmental-sound-classification-50",  # ESC-50, 16kHz WAV
+    "chrisfilo/urbansound8k",                          # UrbanSound8K
 ]
 
 
